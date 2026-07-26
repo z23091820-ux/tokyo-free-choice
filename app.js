@@ -26,11 +26,24 @@ function openMap(s){
   const url=s.mapUrl || ('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(s.name+' 東京'));
   window.open(url,'_blank','noopener');
 }
+
+function searchInput(el){
+  const pos=el.selectionStart;
+  state.query=el.value;
+  save();
+  render();
+  const input=document.querySelector('.search');
+  if(input){
+    input.focus();
+    const p=Math.min(pos,input.value.length);
+    input.setSelectionRange(p,p);
+  }
+}
 function browse(){
  const cats=['全部',...new Set(state.spots.map(s=>s.cat))];
  const q=(state.query||'').toLowerCase();
  const list=state.spots.filter(s=>(state.cat==='全部'||s.cat===state.cat)&&(!q||s.name.toLowerCase().includes(q)||(s.area||'').toLowerCase().includes(q)||(s.note||'').toLowerCase().includes(q)));
- return `<div class="hero"><small>已整合 Google Maps 日本東京私人清單</small><h1>想去哪裡，自己選</h1><p>目前共有 ${state.spots.length} 個景點。Google Maps 匯入景點可直接開啟原始地點。</p><input class="search" placeholder="搜尋景點、餐廳或備註" value="${state.query||''}" oninput="state.query=this.value;save();render()"></div>
+ return `<div class="hero"><small>已整合 Google Maps 日本東京私人清單</small><h1>想去哪裡，自己選</h1><p>目前共有 ${state.spots.length} 個景點。Google Maps 匯入景點可直接開啟原始地點。</p><input class="search" placeholder="搜尋景點、餐廳或備註" value="${state.query||''}" oninput="searchInput(this)"></div>
  <div class="filters">${cats.map(c=>`<button class="filter ${state.cat===c?'on':''}" onclick="state.cat='${c}';save();render()">${c}</button>`).join('')}</div>
  <div class="grid">${list.map(s=>`<article class="spot"><div class="icon">${s.icon}</div><h3>${s.name}</h3><div class="meta">${s.area||'自訂'}｜${s.minutes||90} 分鐘｜${s.walk||'待確認'}</div><div class="note">${s.note||''}</div><div class="tagrow"><span class="tag">${s.cat||'其他'}</span>${s.source==='google-takeout'?'<span class="tag">Google Maps 清單</span>':''}</div><div class="actions"><button class="btn secondary" onclick='openMap(${JSON.stringify(s).replace(/'/g,"&#39;")})'>Google Maps</button><button class="btn primary ${state.selected.includes(s.id)?'selected':''}" onclick="toggle(${s.id})">${state.selected.includes(s.id)?'✓ 已選擇':'＋ 想去'}</button></div></article>`).join('')}</div>`;
 }
