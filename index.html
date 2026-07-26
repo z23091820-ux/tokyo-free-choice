@@ -1,1 +1,21 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#1f5fa8"><meta name="description" content="東京自由行景點選擇與行程管理 Web App"><title>東京自由選景點</title><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="styles.css?v=4"></head><body><div id="app"></div><script src="app.js?v=4"></script><script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js'));}</script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1769aa">
+  <meta name="description" content="整合 Google Maps 清單的東京自由行景點與行程管理工具">
+  <title>東京自由行｜我的景點清單</title>
+  <link rel="manifest" href="manifest.json?v=6">
+  <link rel="stylesheet" href="styles.css?v=6">
+</head>
+<body>
+  <div id="app"></div>
+  <script src="app.js?v=6"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js?v=6'));
+    }
+  </script>
+</body>
+</html>
