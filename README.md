@@ -1,20 +1,27 @@
-# 東京自由行多日旅程管理版 V8
+# 東京自由行｜家庭共享版 V11
 
-新增功能：
-- 每個已安排景點可填寫、修改或刪除備註
-- 備註會依「旅程日期＋景點」分別保存
-- 第一天可填寫去程航班編號、日期時間及備註
-- 最後一天可填寫回程航班編號、日期時間及備註
-- 航班資料會保留在該段旅程歷史紀錄中
-- 保留 V7 的多日旅程、每日景點、Google Maps 導航與歷史旅程功能
+新增：
 
-GitHub 更新請覆蓋：
-- index.html
-- app.js
-- styles.css
-- service-worker.js
-- manifest.json
-- README.md
+- Google 帳號登入
+- 建立家庭共享空間
+- 自動產生 6 位分享碼
+- 家人用分享碼加入
+- 景點、想去清單、旅程、每日安排、航班、備註與歷史紀錄同步
+- Firestore 即時監聽
+- 保留本機 LocalStorage 作為備援
+- 未設定 Firebase 時仍可維持單機使用
 
-部署後開啟：
-https://z23091820-ux.github.io/tokyo-free-choice/?v=8
+## 必做設定
+
+請先閱讀 `FIREBASE設定說明.md`，並完成：
+
+1. 建立 Firebase 專案
+2. 開啟 Google Authentication
+3. 建立 Firestore Database
+4. 發布 `firestore.rules`
+5. 將 Firebase 設定貼入 `firebase-config.js`
+6. 上傳所有網站檔案至 GitHub
+
+部署後網址：
+
+https://z23091820-ux.github.io/tokyo-free-choice/?v=11
