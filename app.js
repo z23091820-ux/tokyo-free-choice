@@ -7,7 +7,17 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
 const spot=id=>state.spots.find(x=>x.id===id);
-const trip=()=>state.trips.find(x=>x.id===state.currentTripId);
+const trip=()=>{
+  const t=state.trips.find(x=>x.id===state.currentTripId);
+  if(t){
+    t.itemNotes=t.itemNotes||{};
+    t.flights=t.flights||{
+      outbound:{flightNo:'',time:'',note:''},
+      inbound:{flightNo:'',time:'',note:''}
+    };
+  }
+  return t;
+};
 const fmt=d=>{if(!d)return'';let x=new Date(d+'T00:00:00');return `${x.getMonth()+1}/${x.getDate()}（${'日一二三四五六'[x.getDay()]}）`};
 const dates=(a,b)=>{let r=[],d=new Date(a+'T00:00:00'),e=new Date(b+'T00:00:00');while(d<=e){r.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+1)}return r};
 function go(p){state.page=p;save();render();scrollTo(0,0)}
@@ -19,7 +29,21 @@ function spotsPage(){let q=(state.query||'').toLowerCase(),list=state.spots.filt
 function updateResults(){let q=$('q').value.toLowerCase(),list=state.spots.filter(s=>!q||`${s.name} ${s.note||''} ${s.cat||''}`.toLowerCase().includes(q));$('count').textContent=list.length+' 個地點';$('cards').innerHTML=spotCards(list)}
 function wantedPage(){let list=state.selected.map(spot).filter(Boolean);return `<h1>想去清單</h1><p class="sub">共 ${list.length} 個景點，可加入旅程日期。</p>${list.length?`<div class="grid">${spotCards(list)}</div><button class="big primary" onclick="state.trips.length?go('trips'):go('newTrip')">安排到旅程</button>`:`<div class="empty">尚未加入景點<br><button onclick="go('spots')">開始找景點</button></div>`}`}
 function newTripPage(){return `<h1>建立旅程</h1><p class="sub">設定名稱與日期，系統會自動建立每天行程。</p><form class="form" onsubmit="createTrip(event)"><label>旅程名稱</label><input id="tn" required placeholder="例如：爸媽東京自由行"><div class="cols"><div><label>開始日期</label><input id="ts" type="date" required></div><div><label>結束日期</label><input id="te" type="date" required></div></div><label>備註</label><textarea id="tt" placeholder="例如：步調輕鬆、住宿在淺草"></textarea><button class="big primary">建立旅程</button></form>`}
-function createTrip(e){e.preventDefault();let a=$('ts').value,b=$('te').value;if(b<a)return toast('結束日期不能早於開始日期');let days={};dates(a,b).forEach(d=>days[d]=[]);let t={id:'t'+Date.now(),name:$('tn').value.trim(),start:a,end:b,note:$('tt').value.trim(),days,archived:false,created:new Date().toISOString()};state.trips.unshift(t);state.currentTripId=t.id;save();go('planner')}
+function createTrip(e){e.preventDefault();let a=$('ts').value,b=$('te').value;if(b<a)return toast('結束日期不能早於開始日期');let days={};dates(a,b).forEach(d=>days[d]=[]);let t={
+  id:'t'+Date.now(),
+  name:$('tn').value.trim(),
+  start:a,
+  end:b,
+  note:$('tt').value.trim(),
+  days,
+  itemNotes:{},
+  flights:{
+    outbound:{flightNo:'',time:'',note:''},
+    inbound:{flightNo:'',time:'',note:''}
+  },
+  archived:false,
+  created:new Date().toISOString()
+};state.trips.unshift(t);state.currentTripId=t.id;save();go('planner')}
 function tripsPage(){let now=new Date().toISOString().slice(0,10),active=state.trips.filter(t=>!t.archived&&t.end>=now),history=state.trips.filter(t=>t.archived||t.end<now);return `<div class="titleRow"><div><h1>我的旅程</h1><p class="sub">旅程名稱、日期與每天安排都會保留。</p></div><button class="primary" onclick="go('newTrip')">＋新增</button></div><h2>目前與未來</h2>${tripList(active)}<h2>歷史旅程</h2>${tripList(history,true)}`}
 function tripList(list,hist=false){return list.length?`<div class="tripList">${list.map(t=>{let n=Object.values(t.days).flat().length;return `<article class="tripCard"><small>${hist?'歷史旅程':'目前旅程'}</small><h3>${esc(t.name)}</h3><p>📅 ${fmt(t.start)}－${fmt(t.end)}</p><p>已安排 ${n} 個景點</p><div class="actions"><button onclick="openTrip('${t.id}')">查看／編輯</button><button onclick="archiveTrip('${t.id}')">${t.archived?'移回目前':'封存'}</button><button class="danger" onclick="deleteTrip('${t.id}')">刪除</button></div></article>`}).join('')}</div>`:`<div class="empty">尚無資料</div>`}
 function openTrip(id){state.currentTripId=id;save();go('planner')}
@@ -29,9 +53,89 @@ function plannerPage(){let t=trip();if(!t)return `<div class="empty">請先選�
 function showDay(d,b){document.querySelectorAll('.dayTabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');$('day').innerHTML=dayPanel(d)}
 function assigned(t){return new Set(Object.values(t.days).flat())}
 function dayPanel(d){let t=trip(),ids=t.days[d],un=state.selected.filter(id=>!assigned(t).has(id));return `<section class="dayBox"><div class="titleRow"><div><h2>${fmt(d)}</h2><p class="sub">可調整當天順序</p></div><button class="primary" onclick="addChecked('${d}')">加入勾選景點</button></div>${ids.length?ids.map((id,i)=>{let s=spot(id);return `<div class="dayItem"><b>${i+1}</b><div class="grow"><h3>${esc(s.name)}</h3><p>${s.minutes||90} 分鐘・${esc(s.cat||'其他')}</p><button onclick="mapOpen(${id},true)">導航</button></div><div><button onclick="moveItem('${d}',${i},-1)">↑</button><button onclick="moveItem('${d}',${i},1)">↓</button><button class="danger" onclick="removeItem('${d}',${id})">✕</button></div></div>`}).join(''):`<div class="empty">這一天尚未安排</div>`}<h3>尚未安排的想去景點</h3>${un.length?un.map(id=>{let s=spot(id);return `<label class="check"><input type="checkbox" value="${id}"><span><b>${esc(s.name)}</b><small>${esc(s.cat||'其他')}</small></span></label>`}).join(''):`<div class="empty">想去景點都已安排</div>`}</section>`}
+
+function renderFlightCard(type,title){
+  const f=trip().flights[type]||{flightNo:'',time:'',note:''};
+  return `<div class="flightCard">
+    <div>
+      <small>${title}</small>
+      <strong>${esc(f.flightNo||'尚未填寫航班')}</strong>
+      <span>${esc(f.time||'尚未填寫時間')}</span>
+      ${f.note?`<em>${esc(f.note)}</em>`:''}
+    </div>
+    <button onclick="editFlight('${type}')">填寫／修改</button>
+  </div>`;
+}
+function editFlight(type){
+  const t=trip();
+  const f=t.flights[type]||{flightNo:'',time:'',note:''};
+  const title=type==='outbound'?'去程航班':'回程航班';
+  $('modal').innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveFlight(event,'${type}')">
+    <h2>${title}</h2>
+    <label>航班編號</label>
+    <input id="flightNo" value="${esc(f.flightNo)}" placeholder="例如：BR184">
+    <label>航班日期與時間</label>
+    <input id="flightTime" type="datetime-local" value="${esc(f.time)}">
+    <label>航班備註</label>
+    <textarea id="flightNote" placeholder="例如：桃園機場第二航廈、提前三小時抵達">${esc(f.note)}</textarea>
+    <button class="big primary">儲存航班資料</button>
+    <button type="button" class="big" onclick="$('modal').innerHTML=''">取消</button>
+  </form></div>`;
+}
+function saveFlight(e,type){
+  e.preventDefault();
+  const t=trip();
+  t.flights[type]={
+    flightNo:$('flightNo').value.trim(),
+    time:$('flightTime').value,
+    note:$('flightNote').value.trim()
+  };
+  save();
+  render();
+  toast('航班資料已儲存');
+}
+function editItemNote(date,id){
+  const t=trip();
+  const key=`${date}:${id}`;
+  const s=spot(id);
+  const current=t.itemNotes[key]||'';
+  $('modal').innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveItemNote(event,'${date}',${id})">
+    <h2>${esc(s.name)}－景點備註</h2>
+    <label>備註內容</label>
+    <textarea id="itemNoteText" placeholder="例如：已預約 18:30、記得帶票券、從東口前往">${esc(current)}</textarea>
+    <button class="big primary">儲存備註</button>
+    ${current?`<button type="button" class="big danger" onclick="deleteItemNote('${date}',${id})">刪除備註</button>`:''}
+    <button type="button" class="big" onclick="$('modal').innerHTML=''">取消</button>
+  </form></div>`;
+}
+function saveItemNote(e,date,id){
+  e.preventDefault();
+  const t=trip();
+  const key=`${date}:${id}`;
+  const value=$('itemNoteText').value.trim();
+  if(value)t.itemNotes[key]=value;
+  else delete t.itemNotes[key];
+  save();
+  render();
+  toast('景點備註已儲存');
+}
+function deleteItemNote(date,id){
+  const t=trip();
+  delete t.itemNotes[`${date}:${id}`];
+  save();
+  render();
+  toast('景點備註已刪除');
+}
+
 function addChecked(d){let t=trip(),ids=[...document.querySelectorAll('.check input:checked')].map(x=>Number(x.value));if(!ids.length)return toast('請先勾選景點');t.days[d].push(...ids);save();render();toast('已加入當天')}
 function moveItem(d,i,n){let a=trip().days[d],j=i+n;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];save();$('day').innerHTML=dayPanel(d)}
-function removeItem(d,id){trip().days[d]=trip().days[d].filter(x=>x!==id);save();render()}
+function removeItem(d,id){
+  const t=trip();
+  t.days[d]=t.days[d].filter(x=>x!==id);
+  delete t.itemNotes[`${d}:${id}`];
+  save();
+  render();
+}
 function editTrip(){$('modal').innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveTripEdit(event)"><h2>編輯旅程</h2><label>旅程名稱</label><input id="en" value="${esc(trip().name)}"><div class="cols"><div><label>開始日期</label><input id="es" type="date" value="${trip().start}"></div><div><label>結束日期</label><input id="ee" type="date" value="${trip().end}"></div></div><label>備註</label><textarea id="et">${esc(trip().note)}</textarea><button class="big primary">儲存</button><button type="button" class="big" onclick="$('modal').innerHTML=''">取消</button></form></div>`}
 function saveTripEdit(e){e.preventDefault();let t=trip(),a=$('es').value,b=$('ee').value;if(b<a)return toast('日期設定錯誤');let nd={};dates(a,b).forEach(d=>nd[d]=t.days[d]||[]);t.name=$('en').value;t.start=a;t.end=b;t.note=$('et').value;t.days=nd;save();render()}
 function render(){let pages={spots:spotsPage,wanted:wantedPage,trips:tripsPage,newTrip:newTripPage,planner:plannerPage};$('app').innerHTML=`<div class="shell"><header><button onclick="go('spots')">🗼 <b>東京旅程管理</b></button><button onclick="go('wanted')">♥ ${state.selected.length}</button></header><main>${(pages[state.page]||spotsPage)()}</main><nav><button class="${state.page==='spots'?'on':''}" onclick="go('spots')">🔎<span>找景點</span></button><button class="${state.page==='wanted'?'on':''}" onclick="go('wanted')">♥<span>想去</span></button><button class="${['trips','newTrip','planner'].includes(state.page)?'on':''}" onclick="go('trips')">🧳<span>旅程</span></button><button onclick="go('newTrip')">＋<span>新增旅程</span></button></nav></div>`}
