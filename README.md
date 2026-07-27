@@ -1,32 +1,19 @@
-# 東京自由行｜雙模式家庭共享版 V15
+# 東京自由行｜畫面修復版 V16
 
-本版保留兩種模式：
-
-## 匿名模式
-- 從 LINE 點網址即可直接使用
-- 不需要 Google、Email 或密碼
-- 建立或輸入 6 位家庭分享碼即可共用
-
-## Google 帳號模式
-- 保留 Google 登入／綁定功能
-- 屬於選用功能
-- 建議在 Safari、Chrome 或電腦瀏覽器操作
-- LINE 內建瀏覽器若無法完成 Google 登入，不影響匿名分享功能
-
-## 資料保護
-- 延續 V14 安全更新機制
-- 更新前自動備份
-- 本機與雲端資料採合併
-- 保留景點、旅程、航班、備註及分享資料
-- 可下載與匯入 JSON 備份
+修正內容：
+- 舊版停留頁面不相容時，不再顯示空白畫面
+- 自動回到「找景點」首頁
+- 不刪除景點、想去清單、旅程、航班、備註、分享碼或雲端資料
+- 修復前會自動建立本機備份
+- 保留匿名分享碼與 Google 登入雙模式
 
 GitHub 請覆蓋：
 - index.html
+- app.js
 - cloud.js
-- styles.css
 - service-worker.js
 - manifest.json
 - README.md
 
 部署後：
-https://z23091820-ux.github.io/tokyo-free-choice/?v=15
+https://z23091820-ux.github.io/tokyo-free-choice/?v=16

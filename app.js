@@ -22,10 +22,16 @@ function makeBackup(label='auto'){
 
 function normalizeLegacyState(input){
   const s=input&&typeof input==='object'?deepClone(input):{};
-  s.page=s.page||'spots';
+  const allowedPages=['spots','wanted','trips','newTrip','planner','add'];
+  s.page=allowedPages.includes(s.page)?s.page:'spots';
   s.spots=Array.isArray(s.spots)?s.spots:[];
   s.selected=Array.isArray(s.selected)?s.selected:[];
-  s.trips=Array.isArray(s.trips)?s.trips:[];
+  s.trips=(Array.isArray(s.trips)?s.trips:[]).filter(Boolean).map(t=>({
+    ...t,
+    days:Array.isArray(t.days)?t.days:[],
+    flights:t.flights&&typeof t.flights==='object'?t.flights:{},
+    notes:t.notes&&typeof t.notes==='object'?t.notes:{}
+  }));
   s.currentTripId=s.currentTripId||null;
   s.query=s.query||'';
   return s;
@@ -451,4 +457,24 @@ function backupPanel(){
 }
 
 function render(){let pages={spots:spotsPage,wanted:wantedPage,trips:tripsPage,newTrip:newTripPage,planner:plannerPage,add:addPage};$('app').innerHTML=`<div class="shell"><header><button onclick="go('spots')">🗼 <b>東京旅程管理</b></button><button onclick="go('wanted')">♥ ${state.selected.length}</button></header><main>${(pages[state.page]||spotsPage)()}</main><nav><button class="${state.page==='spots'?'on':''}" onclick="go('spots')">🔎<span>找景點</span></button><button class="${state.page==='wanted'?'on':''}" onclick="go('wanted')">♥<span>想去</span></button><button class="${['trips','newTrip','planner'].includes(state.page)?'on':''}" onclick="go('trips')">🧳<span>旅程</span></button><button class="${state.page==='add'?'on':''}" onclick="go('add')">＋<span>新增景點</span></button></nav></div>`}
-render();
+function safeInitialRender(){
+  try{
+    render();
+  }catch(err){
+    console.error('初始畫面載入失敗，已自動回到找景點頁',err);
+    try{
+      makeBackup('before-ui-recovery');
+      state.page='spots';
+      state.currentTripId=null;
+      localStorage.setItem(KEY,JSON.stringify(state));
+      render();
+    }catch(secondErr){
+      console.error('畫面修復失敗',secondErr);
+      const root=document.getElementById('app');
+      if(root){
+        root.innerHTML='<div style="padding:24px;font-family:sans-serif"><h2>資料仍有保留</h2><p>畫面載入失敗，請重新整理一次。</p><button onclick="location.reload()" style="padding:12px 18px">重新整理</button></div>';
+      }
+    }
+  }
+}
+safeInitialRender();
