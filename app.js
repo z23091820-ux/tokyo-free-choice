@@ -109,8 +109,11 @@ state.selected=state.selected||[];
 state.trips=state.trips||[];
 const $=id=>document.getElementById(id);
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const save=()=>{
+const saveLocalOnly=()=>{
   localStorage.setItem(KEY,JSON.stringify(state));
+};
+const save=()=>{
+  saveLocalOnly();
   if(window.familyCloud) window.familyCloud.queueSave(window.exportAppState());
 };
 window.exportAppState=()=>{
@@ -244,12 +247,25 @@ function setWishlistKey(key){
 function go(p){state.page=p;save();render();scrollTo(0,0)}
 function toast(t){let e=$('toast')||document.body.appendChild(Object.assign(document.createElement('div'),{id:'toast',className:'toast'}));e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1500)}
 function toggle(id){
-  const ids=wishlistIds();
-  const i=ids.indexOf(id);
-  if(i<0)ids.push(id); else ids.splice(i,1);
-  setWishlistIds(ids);
-  save();
+  const key=currentWishlistKey();
+  const ids=wishlistIds(key);
+  const exists=ids.includes(id);
+
+  if(exists){
+    setWishlistIds(ids.filter(x=>x!==id),key);
+  }else{
+    setWishlistIds([...ids,id],key);
+  }
+
+  // 先立即更新本機畫面，再由 Firestore 原子合併。
+  saveLocalOnly();
   render();
+
+  if(window.familyCloud?.updateWishlist){
+    window.familyCloud.updateWishlist(key,id,!exists);
+  }else{
+    save();
+  }
 }
 function mapOpen(id,nav=false){let s=spot(id);if(!s)return;let u=nav?`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.name+' 日本')}&travelmode=transit`:(s.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name+' 東京')}`);open(u,'_blank')}
 function spotCards(list){return list.map(s=>`<article class="card"><div class="row"><div class="ico">${s.icon||'📍'}</div><div class="grow"><h3>${esc(s.name)}</h3><p>${esc(s.cat||'其他')}・${s.minutes||90} 分鐘</p></div><button class="heart" onclick="toggle(${s.id})">${wishlistIds().includes(s.id)?'♥':'♡'}</button></div><div class="actions"><button onclick="mapOpen(${s.id})">查看地點</button><button class="primary" onclick="mapOpen(${s.id},true)">導航</button></div></article>`).join('')}

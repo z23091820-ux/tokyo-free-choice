@@ -1,5 +1,5 @@
 
-import { firebaseConfig } from './firebase-config.js?v=20.2';
+import { firebaseConfig } from './firebase-config.js?v=20.3';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {
   getAuth,
@@ -11,7 +11,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
-  onSnapshot, serverTimestamp, arrayUnion, persistentLocalCache,
+  onSnapshot, serverTimestamp, arrayUnion, runTransaction, persistentLocalCache,
   persistentMultipleTabManager, initializeFirestore
 } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js';
 
@@ -411,6 +411,73 @@ function listenFamily() {
   );
 }
 
+
+async function updateWishlist(key, spotId, shouldAdd) {
+  if (!db || !user || !familyId) {
+    // 尚未連線時，保留整份資料待補送。
+    pendingState = safeState();
+    setSyncState(navigator.onLine ? 'saving' : 'offline');
+    return;
+  }
+
+  setSyncState('saving');
+
+  try {
+    const familyRef = doc(db, 'families', familyId);
+
+    await runTransaction(db, async transaction => {
+      const snap = await transaction.get(familyRef);
+      if (!snap.exists()) throw new Error('家庭空間不存在');
+
+      const data = snap.data();
+      const appState = data.appState && typeof data.appState === 'object'
+        ? JSON.parse(JSON.stringify(data.appState))
+        : {};
+
+      appState.wishlists = appState.wishlists &&
+                           typeof appState.wishlists === 'object' &&
+                           !Array.isArray(appState.wishlists)
+        ? appState.wishlists
+        : {};
+
+      const current = Array.isArray(appState.wishlists[key])
+        ? appState.wishlists[key]
+        : [];
+
+      const next = shouldAdd
+        ? [...new Set([...current, spotId])]
+        : current.filter(id => id !== spotId);
+
+      appState.wishlists[key] = next;
+
+      // selected 保留作為舊版本相容欄位，內容為所有分類聯集。
+      appState.selected = [
+        ...new Set(
+          Object.values(appState.wishlists)
+            .flat()
+            .filter(id => Number.isFinite(id))
+        )
+      ];
+
+      transaction.update(familyRef, {
+        appState,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid,
+        clientUpdatedAt: Date.now()
+      });
+    });
+
+    lastSyncedAt = new Date();
+    setSyncState('saved');
+  } catch (err) {
+    console.error('想去清單同步失敗', err);
+    pendingState = safeState();
+    setSyncState(navigator.onLine ? 'error' : 'offline');
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(flushPendingSave, 2000);
+  }
+}
+
 async function saveToCloud(state) {
   if (!state) return;
   pendingState = state;
@@ -539,6 +606,7 @@ window.addEventListener('beforeunload', flushPendingSave);
 
 window.familyCloud = {
   queueSave,
+  updateWishlist,
   openPanel,
   forceSync: flushPendingSave,
   getStatus: () => ({syncState,lastSyncedAt,pending:!!pendingState})
