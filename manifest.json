@@ -1,7 +1,7 @@
 {
-  "name": "多城市家庭旅程管理 V20",
+  "name": "多城市家庭旅程管理 V20.1",
   "short_name": "家庭旅程管理",
-  "start_url": "./?v=20",
+  "start_url": "./?v=20.1",
   "display": "standalone",
   "background_color": "#f3f6fa",
   "theme_color": "#1769aa",
