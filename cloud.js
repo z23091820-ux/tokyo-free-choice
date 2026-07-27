@@ -1,5 +1,5 @@
 
-import { firebaseConfig } from './firebase-config.js?v=16';
+import { firebaseConfig } from './firebase-config.js?v=20';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {
   getAuth,
@@ -28,6 +28,7 @@ let unsubscribeFamily = null;
 let saveTimer = null;
 let applyingRemote = false;
 let started = false;
+let lastRemoteSignature = '';
 const isAnonymousUser = () => !!(user && user.isAnonymous);
 
 
@@ -133,7 +134,7 @@ function openPanel() {
       <button id="copyFamilyCode">複製</button>
     </div>
 
-    <p class="family-hint">請家人在 LINE 點開同一網址，再輸入這組分享碼。</p>
+    <p class="family-hint">這組分享碼會固定沿用，更新版本後不需要重新建立。請家人在 LINE 點開同一網址後輸入此碼。</p>
 
     ${isAnonymousUser() ? `
       <button id="googleLink" class="family-google">綁定 Google 帳號（選用）</button>
@@ -155,6 +156,79 @@ function openPanel() {
   document.getElementById('leaveFamily').onclick = leaveFamily;
 }
 
+
+
+async function restoreExistingFamily() {
+  if (!db || !user) return false;
+
+  // 已有家庭 ID 時，先直接連線。
+  if (familyId) {
+    try {
+      const familySnap = await getDoc(doc(db, 'families', familyId));
+      if (familySnap.exists()) {
+        const data = familySnap.data();
+
+        // 身分變更後，自動把目前使用者重新加入原家庭。
+        if (!Array.isArray(data.memberIds) || !data.memberIds.includes(user.uid)) {
+          await updateDoc(doc(db, 'families', familyId), {
+            memberIds: arrayUnion(user.uid),
+            updatedAt: serverTimestamp()
+          });
+        }
+
+        shareCode = data.shareCode || shareCode;
+        if (shareCode) localStorage.setItem(LOCAL_CODE_KEY, shareCode);
+
+        if (data.appState && typeof data.appState === 'object') {
+          applyingRemote = true;
+          window.replaceWithCloudState?.(data.appState);
+          lastRemoteSignature = JSON.stringify(data.appState);
+          setTimeout(() => applyingRemote = false, 300);
+        }
+
+        listenFamily();
+        return true;
+      }
+    } catch (err) {
+      console.warn('依家庭 ID 恢復失敗，改用分享碼重試', err);
+    }
+  }
+
+  // 家庭 ID 遺失或失效時，使用原分享碼重新找到同一個家庭。
+  if (shareCode) {
+    try {
+      const codeSnap = await getDoc(doc(db, 'familyCodes', shareCode));
+      if (!codeSnap.exists() || codeSnap.data().active !== true) return false;
+
+      const id = codeSnap.data().familyId;
+      const familyRef = doc(db, 'families', id);
+      const familySnap = await getDoc(familyRef);
+      if (!familySnap.exists()) return false;
+
+      await updateDoc(familyRef, {
+        memberIds: arrayUnion(user.uid),
+        updatedAt: serverTimestamp()
+      });
+
+      const data = familySnap.data();
+      setCurrentFamily(id, shareCode);
+
+      if (data.appState && typeof data.appState === 'object') {
+        applyingRemote = true;
+        window.replaceWithCloudState?.(data.appState);
+        lastRemoteSignature = JSON.stringify(data.appState);
+        setTimeout(() => applyingRemote = false, 300);
+      }
+
+      listenFamily();
+      return true;
+    } catch (err) {
+      console.warn('依原分享碼恢復家庭失敗', err);
+    }
+  }
+
+  return false;
+}
 
 async function connectGoogle() {
   try {
@@ -184,6 +258,10 @@ async function connectGoogle() {
 }
 
 async function createFamily() {
+  if (familyId && shareCode) {
+    alert(`目前已連結家庭分享碼：${shareCode}，不需要重新建立。`);
+    return;
+  }
   const code = randomCode();
   const familyRef = doc(db, 'families', crypto.randomUUID());
   const codeRef = doc(db, 'familyCodes', code);
@@ -229,7 +307,19 @@ async function joinFamily() {
       updatedAt: serverTimestamp(),
       updatedBy: user.uid
     });
+    const familySnap = await getDoc(doc(db, 'families', id));
+    if (!familySnap.exists()) return alert('家庭空間不存在');
+    const familyData = familySnap.data();
+
     setCurrentFamily(id, code);
+
+    if (familyData.appState && typeof familyData.appState === 'object') {
+      applyingRemote = true;
+      window.replaceWithCloudState?.(familyData.appState);
+      lastRemoteSignature = JSON.stringify(familyData.appState);
+      setTimeout(() => applyingRemote = false, 300);
+    }
+
     listenFamily();
     closePanel();
     injectUI();
@@ -258,25 +348,39 @@ function leaveFamily() {
 }
 
 function listenFamily() {
-  unsubscribeFamily?.();
   if (!db || !user || !familyId) return;
 
-  unsubscribeFamily = onSnapshot(doc(db, 'families', familyId), snap => {
-    if (!snap.exists()) {
-      leaveFamily();
-      return;
-    }
-    const data = snap.data();
-    shareCode = data.shareCode || shareCode;
-    localStorage.setItem(LOCAL_CODE_KEY, shareCode);
+  unsubscribeFamily?.();
+  unsubscribeFamily = onSnapshot(
+    doc(db, 'families', familyId),
+    { includeMetadataChanges: true },
+    snap => {
+      if (!snap.exists()) {
+        leaveFamily();
+        return;
+      }
 
-    if (data.appState && typeof data.appState === 'object' && data.updatedBy !== user.uid) {
-      applyingRemote = true;
-      window.applyCloudState?.(data.appState);
-      setTimeout(() => applyingRemote = false, 200);
-    }
-    injectUI();
-  }, err => console.error('家庭同步監聽失敗', err));
+      const data = snap.data();
+      shareCode = data.shareCode || shareCode;
+      localStorage.setItem(LOCAL_CODE_KEY, shareCode);
+
+      // 本機尚未送到伺服器的寫入不回套，避免循環。
+      if (!snap.metadata.hasPendingWrites &&
+          data.appState &&
+          typeof data.appState === 'object') {
+        const signature = JSON.stringify(data.appState);
+        if (signature !== lastRemoteSignature) {
+          applyingRemote = true;
+          lastRemoteSignature = signature;
+          window.replaceWithCloudState?.(data.appState);
+          setTimeout(() => applyingRemote = false, 300);
+        }
+      }
+
+      injectUI();
+    },
+    err => console.error('家庭同步監聽失敗', err)
+  );
 }
 
 async function saveToCloud(state) {
@@ -287,6 +391,7 @@ async function saveToCloud(state) {
       updatedAt: serverTimestamp(),
       updatedBy: user.uid
     });
+    lastRemoteSignature = JSON.stringify(state);
   } catch (err) {
     console.error('家庭同步儲存失敗', err);
   }
@@ -347,8 +452,8 @@ async function init() {
       started = true;
       injectUI();
 
-      if (familyId) listenFamily();
-      else unsubscribeFamily?.();
+      const restored = await restoreExistingFamily();
+      if (!restored) unsubscribeFamily?.();
     });
   } catch (err) {
     console.error('Firebase 初始化失敗', err);
