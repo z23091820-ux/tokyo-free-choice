@@ -111,20 +111,45 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const save=()=>{
   localStorage.setItem(KEY,JSON.stringify(state));
-  if(window.familyCloud) window.familyCloud.queueSave(state);
+  if(window.familyCloud) window.familyCloud.queueSave(window.exportAppState());
 };
-window.exportAppState=()=>JSON.parse(JSON.stringify(state));
+window.exportAppState=()=>{
+  const shared=JSON.parse(JSON.stringify(state));
+  delete shared.page;
+  delete shared.query;
+  delete shared.currentTripId;
+  delete shared.activeDestination;
+  delete shared.activeWishlistKey;
+  delete shared.filterCat;
+  delete shared.filterIndoor;
+  delete shared.filterWalk;
+  return shared;
+};
 window.replaceWithCloudState=(cloudState)=>window.applyCloudState(cloudState);
 window.applyCloudState=(cloudState)=>{
   if(!cloudState||typeof cloudState!=='object')return;
   makeBackup('before-family-sync');
-  const incoming=normalizeLegacyState(cloudState);
-  // 家庭共享後，雲端資料是共同唯一版本；只保留目前畫面位置，避免跳頁。
-  const currentPage=state.page;
-  state=incoming;
-  if(['spots','wanted','trips','newTrip','planner','add'].includes(currentPage)){
-    state.page=currentPage;
+
+  const localUi={
+    page:state.page,
+    query:state.query,
+    currentTripId:state.currentTripId,
+    activeDestination:state.activeDestination,
+    activeWishlistKey:state.activeWishlistKey,
+    filterCat:state.filterCat,
+    filterIndoor:state.filterIndoor,
+    filterWalk:state.filterWalk
+  };
+
+  const incoming=normalizeLegacyState({...state,...cloudState});
+  state={...incoming,...localUi};
+
+  // 若目前開啟的旅程已被其他裝置刪除，安全回到旅程列表。
+  if(state.currentTripId && !state.trips.some(t=>t&&t.id===state.currentTripId)){
+    state.currentTripId=null;
+    if(state.page==='planner')state.page='trips';
   }
+
   localStorage.setItem(KEY,JSON.stringify(state));
   render();
 };

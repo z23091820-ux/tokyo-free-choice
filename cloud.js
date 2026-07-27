@@ -1,5 +1,5 @@
 
-import { firebaseConfig } from './firebase-config.js?v=20.1';
+import { firebaseConfig } from './firebase-config.js?v=20.2';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {
   getAuth,
@@ -29,6 +29,10 @@ let saveTimer = null;
 let applyingRemote = false;
 let started = false;
 let lastRemoteSignature = '';
+let pendingState = null;
+let retryTimer = null;
+let syncState = 'idle';
+let lastSyncedAt = null;
 const isAnonymousUser = () => !!(user && user.isAnonymous);
 
 
@@ -47,7 +51,20 @@ function familyButtonHtml() {
   if (!CONFIGURED) return `<button id="familyCloudBtn" class="family-cloud-button setup">⚙️ 啟用家庭共享</button>`;
   if (!user) return `<button id="familyCloudBtn" class="family-cloud-button">⏳ 準備家庭共享</button>`;
   if (!familyId) return `<button id="familyCloudBtn" class="family-cloud-button">👨‍👩‍👧 分享碼共用</button>`;
-  return `<button id="familyCloudBtn" class="family-cloud-button connected">☁️ 家庭已同步</button>`;
+
+  const labels={
+    saving:'☁️ 同步中…',
+    saved:'☁️ 已同步',
+    offline:'⚠️ 等待連線',
+    error:'⚠️ 同步失敗',
+    idle:'☁️ 家庭已同步'
+  };
+  return `<button id="familyCloudBtn" class="family-cloud-button connected">${labels[syncState]||labels.idle}</button>`;
+}
+
+function setSyncState(next) {
+  syncState = next;
+  injectUI();
 }
 
 function injectUI() {
@@ -143,6 +160,10 @@ function openPanel() {
       <div class="family-user">已綁定：${escapeHtml(user.displayName || user.email || 'Google 帳號')}</div>
     `}
 
+    <div class="family-user">
+      最後同步：${lastSyncedAt ? lastSyncedAt.toLocaleTimeString('zh-TW') : '等待第一次同步'}
+    </div>
+    <button id="forceFamilySync" class="family-primary">立即同步</button>
     <button id="leaveFamily" class="family-secondary">離開這個家庭空間</button>
   `);
 
@@ -153,6 +174,11 @@ function openPanel() {
   if (document.getElementById('googleLink')) {
     document.getElementById('googleLink').onclick = connectGoogle;
   }
+  document.getElementById('forceFamilySync').onclick = () => {
+    pendingState = safeState();
+    flushPendingSave();
+    closePanel();
+  };
   document.getElementById('leaveFamily').onclick = leaveFamily;
 }
 
@@ -183,7 +209,7 @@ async function restoreExistingFamily() {
           applyingRemote = true;
           window.replaceWithCloudState?.(data.appState);
           lastRemoteSignature = JSON.stringify(data.appState);
-          setTimeout(() => applyingRemote = false, 300);
+          setTimeout(() => applyingRemote = false, 80);
         }
 
         listenFamily();
@@ -217,7 +243,7 @@ async function restoreExistingFamily() {
         applyingRemote = true;
         window.replaceWithCloudState?.(data.appState);
         lastRemoteSignature = JSON.stringify(data.appState);
-        setTimeout(() => applyingRemote = false, 300);
+        setTimeout(() => applyingRemote = false, 80);
       }
 
       listenFamily();
@@ -317,7 +343,7 @@ async function joinFamily() {
       applyingRemote = true;
       window.replaceWithCloudState?.(familyData.appState);
       lastRemoteSignature = JSON.stringify(familyData.appState);
-      setTimeout(() => applyingRemote = false, 300);
+      setTimeout(() => applyingRemote = false, 80);
     }
 
     listenFamily();
@@ -373,7 +399,9 @@ function listenFamily() {
           applyingRemote = true;
           lastRemoteSignature = signature;
           window.replaceWithCloudState?.(data.appState);
-          setTimeout(() => applyingRemote = false, 300);
+          lastSyncedAt = new Date();
+          setSyncState('saved');
+          setTimeout(() => applyingRemote = false, 80);
         }
       }
 
@@ -384,24 +412,60 @@ function listenFamily() {
 }
 
 async function saveToCloud(state) {
-  if (!db || !user || !familyId || applyingRemote) return;
+  if (!state) return;
+  pendingState = state;
+
+  if (!db || !user || !familyId || applyingRemote) {
+    setSyncState(navigator.onLine ? 'saving' : 'offline');
+    return;
+  }
+
+  clearTimeout(retryTimer);
+  setSyncState('saving');
+
   try {
+    const snapshot = JSON.parse(JSON.stringify(pendingState));
     await updateDoc(doc(db, 'families', familyId), {
-      appState: state,
+      appState: snapshot,
       updatedAt: serverTimestamp(),
-      updatedBy: user.uid
+      updatedBy: user.uid,
+      clientUpdatedAt: Date.now()
     });
-    lastRemoteSignature = JSON.stringify(state);
+
+    lastRemoteSignature = JSON.stringify(snapshot);
+
+    // 只有目前待送內容仍是剛才那份，才清除。
+    if (JSON.stringify(pendingState) === JSON.stringify(snapshot)) {
+      pendingState = null;
+    }
+
+    lastSyncedAt = new Date();
+    setSyncState('saved');
+
+    // 儲存期間又有新修改，立刻補送。
+    if (pendingState) {
+      setTimeout(flushPendingSave, 20);
+    }
   } catch (err) {
     console.error('家庭同步儲存失敗', err);
+    setSyncState(navigator.onLine ? 'error' : 'offline');
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(flushPendingSave, 2000);
   }
 }
 
+function flushPendingSave() {
+  if (!pendingState) return;
+  saveToCloud(pendingState);
+}
+
 function queueSave(state) {
-  if (!started || applyingRemote || !user || !familyId) return;
+  pendingState = JSON.parse(JSON.stringify(state));
+  setSyncState(navigator.onLine ? 'saving' : 'offline');
+
+  // 短延遲合併快速連續輸入，但不再等待 0.7 秒。
   clearTimeout(saveTimer);
-  const snapshot = JSON.parse(JSON.stringify(state));
-  saveTimer = setTimeout(() => saveToCloud(snapshot), 700);
+  saveTimer = setTimeout(flushPendingSave, 120);
 }
 
 function escapeHtml(value='') {
@@ -454,11 +518,29 @@ async function init() {
 
       const restored = await restoreExistingFamily();
       if (!restored) unsubscribeFamily?.();
+      if (pendingState) flushPendingSave();
     });
   } catch (err) {
     console.error('Firebase 初始化失敗', err);
   }
 }
 
-window.familyCloud = { queueSave, openPanel };
+window.addEventListener('online', () => {
+  setSyncState('saving');
+  flushPendingSave();
+});
+window.addEventListener('offline', () => setSyncState('offline'));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') flushPendingSave();
+  else flushPendingSave();
+});
+window.addEventListener('pagehide', flushPendingSave);
+window.addEventListener('beforeunload', flushPendingSave);
+
+window.familyCloud = {
+  queueSave,
+  openPanel,
+  forceSync: flushPendingSave,
+  getStatus: () => ({syncState,lastSyncedAt,pending:!!pendingState})
+};
 init();
