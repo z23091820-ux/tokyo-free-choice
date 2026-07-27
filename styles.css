@@ -52,3 +52,12 @@
 .family-code-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
 .family-code-row strong{display:block;background:#f0f5fa;border-radius:12px;padding:14px;text-align:center;font-size:1.5rem;letter-spacing:.18em}
 .family-code-row button{border:1px solid #1769aa;background:#fff;color:#1769aa;border-radius:10px;padding:10px}
+
+.backup-panel{margin-top:24px;background:#eef7ff;border:1px solid #bdd8f0;border-radius:16px;padding:14px}
+.backup-panel strong{display:block;color:#1769aa}
+.backup-panel p{margin:5px 0 10px;color:#657487}
+.backup-panel>div{display:flex;gap:8px;flex-wrap:wrap}
+.backup-panel button{border:1px solid #1769aa;background:#fff;color:#1769aa;border-radius:10px;padding:9px 12px;font-weight:800}
+
+.family-google{width:100%;min-height:50px;margin-top:10px;border-radius:12px;font-weight:900;background:#fff;color:#263238;border:1px solid #b9c8d8}
+.family-google:before{content:"G";display:inline-grid;place-items:center;width:24px;height:24px;margin-right:8px;border-radius:50%;background:#fff;border:1px solid #d8e2ec;color:#1769aa;font-weight:900}

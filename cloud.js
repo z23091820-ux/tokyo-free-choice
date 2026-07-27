@@ -1,8 +1,13 @@
 
-import { firebaseConfig } from './firebase-config.js?v=12';
+import { firebaseConfig } from './firebase-config.js?v=15';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth,
+  GoogleAuthProvider,
+  signInAnonymously,
+  signInWithPopup,
+  linkWithPopup,
+  onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
@@ -23,6 +28,8 @@ let unsubscribeFamily = null;
 let saveTimer = null;
 let applyingRemote = false;
 let started = false;
+const isAnonymousUser = () => !!(user && user.isAnonymous);
+
 
 function safeState() {
   return window.exportAppState ? window.exportAppState() : null;
@@ -37,8 +44,8 @@ function randomCode() {
 
 function familyButtonHtml() {
   if (!CONFIGURED) return `<button id="familyCloudBtn" class="family-cloud-button setup">⚙️ 啟用家庭共享</button>`;
-  if (!user) return `<button id="familyCloudBtn" class="family-cloud-button">👨‍👩‍👧 家庭登入</button>`;
-  if (!familyId) return `<button id="familyCloudBtn" class="family-cloud-button">👨‍👩‍👧 建立／加入家庭</button>`;
+  if (!user) return `<button id="familyCloudBtn" class="family-cloud-button">⏳ 準備家庭共享</button>`;
+  if (!familyId) return `<button id="familyCloudBtn" class="family-cloud-button">👨‍👩‍👧 分享碼共用</button>`;
   return `<button id="familyCloudBtn" class="family-cloud-button connected">☁️ 家庭已同步</button>`;
 }
 
@@ -71,69 +78,109 @@ function openPanel() {
   if (!CONFIGURED) {
     modal(`
       <h2>家庭共享尚未啟用</h2>
-      <p>請先完成 Firebase 設定，再把 <code>firebase-config.js</code> 上傳到 GitHub。</p>
-      <p class="family-hint">壓縮檔內附有「FIREBASE設定說明.md」及 Firestore 安全規則。</p>
+      <p>請先完成 Firebase 設定，再重新上傳網站檔案。</p>
     `);
     return;
   }
+
   if (!user) {
     modal(`
-      <h2>家庭旅程分享</h2>
-      <p>使用 Google 帳號登入後，可建立家庭分享碼或加入家人的旅程。</p>
-      <button id="googleLogin" class="family-primary">使用 Google 帳號登入</button>
+      <h2>正在準備家庭共享</h2>
+      <p>系統正在建立匿名使用權限，請稍候幾秒後再試一次。</p>
     `);
-    document.getElementById('googleLogin').onclick = login;
     return;
   }
+
   if (!familyId) {
     modal(`
       <h2>家庭旅程分享</h2>
-      <div class="family-user">已登入：${escapeHtml(user.displayName || user.email)}</div>
-      <button id="createFamily" class="family-primary">建立新的家庭空間</button>
+      <div class="family-user">
+        ${isAnonymousUser() ? '目前使用匿名模式，不需要帳號' : `已使用 Google 帳號：${escapeHtml(user.displayName || user.email || '')}`}
+      </div>
+
+      <button id="createFamily" class="family-primary">建立新的家庭分享碼</button>
+
       <div class="family-divider">或</div>
+
       <label>輸入家人提供的 6 位分享碼</label>
       <input id="joinCode" class="family-input" maxlength="6" placeholder="例如：TK8P2M">
-      <button id="joinFamily" class="family-secondary">加入家庭空間</button>
-      <button id="logoutFamily" class="family-text">登出 Google 帳號</button>
+      <button id="joinFamily" class="family-secondary">使用分享碼加入</button>
+
+      ${isAnonymousUser() ? `
+        <div class="family-divider">選擇性功能</div>
+        <button id="googleLink" class="family-google">使用 Google 帳號保留身分</button>
+        <p class="family-hint">LINE 內可直接使用匿名模式；Google 登入較適合在 Safari、Chrome 或電腦瀏覽器操作。</p>
+      ` : `
+        <p class="family-hint">此裝置已綁定 Google 帳號。</p>
+      `}
     `);
+
     document.getElementById('createFamily').onclick = createFamily;
     document.getElementById('joinFamily').onclick = joinFamily;
-    document.getElementById('logoutFamily').onclick = logout;
+    if (document.getElementById('googleLink')) {
+      document.getElementById('googleLink').onclick = connectGoogle;
+    }
     return;
   }
 
   modal(`
     <h2>家庭旅程已同步</h2>
     <div class="family-status">☁️ 所有成員共用同一份景點與旅程資料</div>
+
     <label>家庭分享碼</label>
     <div class="family-code-row">
       <strong>${escapeHtml(shareCode)}</strong>
       <button id="copyFamilyCode">複製</button>
     </div>
-    <p class="family-hint">請家人在自己的手機開啟網站、登入 Google 帳號後輸入這組分享碼。</p>
+
+    <p class="family-hint">請家人在 LINE 點開同一網址，再輸入這組分享碼。</p>
+
+    ${isAnonymousUser() ? `
+      <button id="googleLink" class="family-google">綁定 Google 帳號（選用）</button>
+      <p class="family-hint">綁定後，即使清除瀏覽器資料，日後仍可用同一 Google 帳號登入。</p>
+    ` : `
+      <div class="family-user">已綁定：${escapeHtml(user.displayName || user.email || 'Google 帳號')}</div>
+    `}
+
     <button id="leaveFamily" class="family-secondary">離開這個家庭空間</button>
-    <button id="logoutFamily" class="family-text">登出 Google 帳號</button>
   `);
+
   document.getElementById('copyFamilyCode').onclick = async () => {
     await navigator.clipboard.writeText(shareCode);
     document.getElementById('copyFamilyCode').textContent = '已複製';
   };
-  document.getElementById('leaveFamily').onclick = leaveFamily;
-  document.getElementById('logoutFamily').onclick = logout;
-}
-
-async function login() {
-  try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
-    closePanel();
-  } catch (err) {
-    alert(`登入失敗：${friendlyError(err)}`);
+  if (document.getElementById('googleLink')) {
+    document.getElementById('googleLink').onclick = connectGoogle;
   }
+  document.getElementById('leaveFamily').onclick = leaveFamily;
 }
 
-async function logout() {
-  await signOut(auth);
-  closePanel();
+
+async function connectGoogle() {
+  try {
+    const provider = new GoogleAuthProvider();
+
+    if (user && user.isAnonymous) {
+      await linkWithPopup(user, provider);
+    } else {
+      await signInWithPopup(auth, provider);
+    }
+
+    user = auth.currentUser;
+    closePanel();
+    injectUI();
+    setTimeout(openPanel, 150);
+  } catch (err) {
+    if (err?.code === 'auth/credential-already-in-use') {
+      alert('這個 Google 帳號已綁定其他 Firebase 使用者。請先在外部瀏覽器以該帳號登入。');
+      return;
+    }
+    if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/web-storage-unsupported') {
+      alert('LINE 內建瀏覽器無法完成 Google 登入。匿名分享功能仍可正常使用；需要綁定時，請改用 Safari 或 Chrome。');
+      return;
+    }
+    alert(`Google 登入失敗：${friendlyError(err)}`);
+  }
 }
 
 async function createFamily() {
@@ -223,7 +270,7 @@ function listenFamily() {
     shareCode = data.shareCode || shareCode;
     localStorage.setItem(LOCAL_CODE_KEY, shareCode);
 
-    if (data.appState && data.updatedBy !== user.uid) {
+    if (data.appState && typeof data.appState === 'object' && data.updatedBy !== user.uid) {
       applyingRemote = true;
       window.applyCloudState?.(data.appState);
       setTimeout(() => applyingRemote = false, 200);
@@ -263,6 +310,7 @@ function friendlyError(err) {
   if (code.includes('popup-closed')) return '登入視窗已關閉';
   if (code.includes('unauthorized-domain')) return '請先把 GitHub Pages 網域加入 Firebase Authorized domains';
   if (code.includes('permission-denied')) return 'Firestore 權限規則尚未正確設定';
+  if (code.includes('missing-initial-state')) return 'LINE 內建瀏覽器無法完成 Google 登入，請改用匿名分享，或以 Safari／Chrome 綁定 Google 帳號';
   return err?.message || '發生未知錯誤';
 }
 
@@ -281,11 +329,25 @@ async function init() {
       db = getFirestore(app);
     }
 
-    onAuthStateChanged(auth, current => {
+    onAuthStateChanged(auth, async current => {
+      if (!current) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.error('匿名登入失敗', err);
+          modal(`
+            <h2>家庭共享尚未準備完成</h2>
+            <p>請到 Firebase Authentication 啟用「匿名」登入方式。</p>
+          `);
+        }
+        return;
+      }
+
       user = current;
       started = true;
       injectUI();
-      if (user && familyId) listenFamily();
+
+      if (familyId) listenFamily();
       else unsubscribeFamily?.();
     });
   } catch (err) {
