@@ -1,10 +1,9 @@
 {
-  "name": "東京自由行｜我的景點清單",
-  "short_name": "東京景點",
-  "start_url": "./?v=6",
+  "name": "東京自由行｜旅程管理",
+  "short_name": "東京旅程",
+  "start_url": "./?v=7",
   "display": "standalone",
   "background_color": "#f3f6fa",
   "theme_color": "#1769aa",
-  "lang": "zh-TW",
-  "description": "整合 Google Maps 清單的東京自由行景點與行程管理工具"
+  "lang": "zh-TW"
 }
