@@ -201,6 +201,17 @@ state.spots=mergeStates(
 state.selected=state.selected||[];
 state.trips=state.trips||[];
 const $=id=>document.getElementById(id);
+
+function ensureModalRoot(){
+  let root=document.getElementById('modal');
+  if(!root){
+    root=document.createElement('div');
+    root.id='modal';
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const saveLocalOnly=()=>{
   localStorage.setItem(KEY,JSON.stringify(state));
@@ -453,17 +464,17 @@ function reviewUnconfirmedRegions(){
 }
 
 function manageRegions(){
-  $('modal').innerHTML=regionModalHtml({mode:'manage'});
+  ensureModalRoot().innerHTML=regionModalHtml({mode:'manage'});
 }
 
 function editSpotRegion(id){
-  $('modal').innerHTML=regionModalHtml({mode:'select',spotId:id});
+  ensureModalRoot().innerHTML=regionModalHtml({mode:'select',spotId:id});
 }
 
 function filterByRegion(region){
   state.filterRegion=region;
   save();
-  $('modal').innerHTML='';
+  ensureModalRoot().innerHTML='';
   render();
 }
 
@@ -480,7 +491,7 @@ function addRegionFromModal(destination,spotId,mode){
   if(mode==='select'&&spotId!==null){
     selectSpotRegion(spotId,name);
   }else{
-    $('modal').innerHTML=regionModalHtml({mode:'manage'});
+    ensureModalRoot().innerHTML=regionModalHtml({mode:'manage'});
     toast('區域已新增');
   }
 }
@@ -491,7 +502,7 @@ function selectSpotRegion(id,region){
 
   s.area=region;
   localStorage.setItem(KEY,JSON.stringify(state));
-  $('modal').innerHTML='';
+  ensureModalRoot().innerHTML='';
   render();
 
   if(window.familyCloud?.updateSpotRegion){
@@ -515,7 +526,7 @@ function renameRegion(oldName){
   const regions=availableRegions(destination).map(x=>x===oldName?next:x);
   saveRegionList(destination,regions);
   save();
-  $('modal').innerHTML=regionModalHtml({mode:'manage'});
+  ensureModalRoot().innerHTML=regionModalHtml({mode:'manage'});
   toast('區域已重新命名');
 }
 
@@ -529,7 +540,7 @@ function deleteRegion(name){
 
   saveRegionList(destination,availableRegions(destination).filter(x=>x!==name));
   save();
-  $('modal').innerHTML=regionModalHtml({mode:'manage'});
+  ensureModalRoot().innerHTML=regionModalHtml({mode:'manage'});
   toast('區域已刪除');
 }
 
@@ -706,7 +717,7 @@ function editFlight(type){
   const t=trip();
   const f=t.flights[type]||{flightNo:'',time:'',note:''};
   const title=type==='outbound'?'去程航班':'回程航班';
-  $('modal').innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveFlight(event,'${type}')">
+  ensureModalRoot().innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveFlight(event,'${type}')">
     <h2>${title}</h2>
     <label>航班編號</label>
     <input id="flightNo" value="${esc(f.flightNo)}" placeholder="例如：BR184">
@@ -735,7 +746,7 @@ function editItemNote(date,id){
   const key=`${date}:${id}`;
   const s=spot(id);
   const current=t.itemNotes[key]||'';
-  $('modal').innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveItemNote(event,'${date}',${id})">
+  ensureModalRoot().innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveItemNote(event,'${date}',${id})">
     <h2>${esc(s.name)}－景點備註</h2>
     <label>備註內容</label>
     <textarea id="itemNoteText" placeholder="例如：已預約 18:30、記得帶票券、從東口前往">${esc(current)}</textarea>
@@ -772,7 +783,7 @@ function removeItem(d,id){
   save();
   render();
 }
-function editTrip(){$('modal').innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveTripEdit(event)"><h2>編輯旅程</h2><label>旅程名稱</label><input id="en" value="${esc(trip().name)}"><div class="cols"><div><label>開始日期</label><input id="es" type="date" value="${trip().start}"></div><div><label>結束日期</label><input id="ee" type="date" value="${trip().end}"></div></div><label>備註</label><textarea id="et">${esc(trip().note)}</textarea><button class="big primary">儲存</button><button type="button" class="big" onclick="$('modal').innerHTML=''">取消</button></form></div>`}
+function editTrip(){ensureModalRoot().innerHTML=`<div class="overlay"><form class="modal" onsubmit="saveTripEdit(event)"><h2>編輯旅程</h2><label>旅程名稱</label><input id="en" value="${esc(trip().name)}"><div class="cols"><div><label>開始日期</label><input id="es" type="date" value="${trip().start}"></div><div><label>結束日期</label><input id="ee" type="date" value="${trip().end}"></div></div><label>備註</label><textarea id="et">${esc(trip().note)}</textarea><button class="big primary">儲存</button><button type="button" class="big" onclick="$('modal').innerHTML=''">取消</button></form></div>`}
 function saveTripEdit(e){e.preventDefault();let t=trip(),a=$('es').value,b=$('ee').value;if(b<a)return toast('日期設定錯誤');let nd={};dates(a,b).forEach(d=>nd[d]=t.days[d]||[]);t.name=$('en').value;t.start=a;t.end=b;t.note=$('et').value;t.days=nd;save();render()}
 
 function addPage(){
