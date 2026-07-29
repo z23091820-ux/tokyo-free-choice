@@ -81,3 +81,23 @@
 .region-filter select{min-height:44px;min-width:180px;border:1px solid #bdd1e3;border-radius:10px;padding:8px 12px;background:#fff}
 
 .region-filter button{min-height:44px;border:1px solid #1769aa;border-radius:10px;padding:8px 14px;background:#fff;color:#1769aa;font-weight:800}
+
+.region-modal{max-width:560px}
+.modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.modal-head h2{margin:3px 0 0}
+.modal-close{border:none;background:#eef3f7;width:40px;height:40px;border-radius:50%;font-size:18px}
+.region-chip-list{display:flex;flex-direction:column;gap:10px;margin:16px 0}
+.region-chip-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}
+.region-chip-row.selected .region-chip-main{background:#1769aa;color:#fff;border-color:#1769aa}
+.region-chip-main{min-height:48px;text-align:left;border:1px solid #bdd1e3;background:#fff;border-radius:12px;padding:10px 14px;font-weight:800}
+.region-chip-edit,.region-chip-delete{width:44px;height:44px;border-radius:10px;border:1px solid #d5e0e9;background:#fff}
+.region-chip-delete{color:#b23b3b}
+.region-add-box{margin-top:18px;padding-top:16px;border-top:1px solid #dbe5ed}
+.region-add-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
+.region-add-row input{min-height:48px;border:1px solid #bdd1e3;border-radius:12px;padding:10px 12px}
+@media(max-width:520px){
+  .region-chip-row{grid-template-columns:1fr 42px 42px}
+  .region-add-row{grid-template-columns:1fr}
+}
+
+.region-filter{flex-wrap:wrap}

@@ -1,5 +1,5 @@
 
-import { firebaseConfig } from './firebase-config.js?v=20.5';
+import { firebaseConfig } from './firebase-config.js?v=20.7';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {
   getAuth,
