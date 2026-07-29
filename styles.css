@@ -75,3 +75,9 @@
 .item-note{margin-top:6px;padding:7px 9px;border-radius:8px;background:#f3f7fa;color:#40576a}
 .dayItem small{display:inline-block;margin-top:4px;color:#5d6f7e}
 @media(max-width:640px){.filter-grid{grid-template-columns:1fr}.actions{flex-wrap:wrap}.actions button{flex:1 1 42%}}
+
+.region-filter{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.region-filter label{font-weight:800;color:#36566f}
+.region-filter select{min-height:44px;min-width:180px;border:1px solid #bdd1e3;border-radius:10px;padding:8px 12px;background:#fff}
+
+.region-filter button{min-height:44px;border:1px solid #1769aa;border-radius:10px;padding:8px 14px;background:#fff;color:#1769aa;font-weight:800}

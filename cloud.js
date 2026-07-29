@@ -1,5 +1,5 @@
 
-import { firebaseConfig } from './firebase-config.js?v=20.3';
+import { firebaseConfig } from './firebase-config.js?v=20.5';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
 import {
   getAuth,
@@ -412,6 +412,105 @@ function listenFamily() {
 }
 
 
+
+
+async function updateRegionList(destination, regions) {
+  if (!db || !user || !familyId) {
+    pendingState = safeState();
+    setSyncState(navigator.onLine ? 'saving' : 'offline');
+    return;
+  }
+
+  setSyncState('saving');
+
+  try {
+    const familyRef = doc(db, 'families', familyId);
+    await runTransaction(db, async transaction => {
+      const snap = await transaction.get(familyRef);
+      if (!snap.exists()) throw new Error('家庭空間不存在');
+
+      const data = snap.data();
+      const appState = data.appState && typeof data.appState === 'object'
+        ? JSON.parse(JSON.stringify(data.appState))
+        : {};
+
+      appState.regionsByDestination =
+        appState.regionsByDestination &&
+        typeof appState.regionsByDestination === 'object' &&
+        !Array.isArray(appState.regionsByDestination)
+          ? appState.regionsByDestination
+          : {};
+
+      appState.regionsByDestination[destination] =
+        [...new Set((regions||[]).map(x=>String(x).trim()).filter(Boolean))];
+
+      transaction.update(familyRef,{
+        appState,
+        updatedAt:serverTimestamp(),
+        updatedBy:user.uid,
+        clientUpdatedAt:Date.now()
+      });
+    });
+
+    lastSyncedAt=new Date();
+    setSyncState('saved');
+  } catch(err) {
+    console.error('區域清單同步失敗',err);
+    pendingState=safeState();
+    setSyncState(navigator.onLine?'error':'offline');
+  }
+}
+
+async function updateSpotRegion(spotId, region) {
+  if (!db || !user || !familyId) {
+    pendingState = safeState();
+    setSyncState(navigator.onLine ? 'saving' : 'offline');
+    return;
+  }
+
+  setSyncState('saving');
+
+  try {
+    const familyRef = doc(db, 'families', familyId);
+
+    await runTransaction(db, async transaction => {
+      const snap = await transaction.get(familyRef);
+      if (!snap.exists()) throw new Error('家庭空間不存在');
+
+      const data = snap.data();
+      const appState = data.appState && typeof data.appState === 'object'
+        ? JSON.parse(JSON.stringify(data.appState))
+        : {};
+
+      appState.spots = Array.isArray(appState.spots) ? appState.spots : [];
+      const index = appState.spots.findIndex(s => s && s.id === spotId);
+
+      if (index >= 0) {
+        appState.spots[index] = {
+          ...appState.spots[index],
+          area: region,
+          regionUpdatedAt: Date.now(),
+          regionUpdatedBy: user.uid
+        };
+      }
+
+      transaction.update(familyRef, {
+        appState,
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid,
+        clientUpdatedAt: Date.now()
+      });
+    });
+
+    lastSyncedAt = new Date();
+    setSyncState('saved');
+  } catch (err) {
+    console.error('景點區域同步失敗', err);
+    pendingState = safeState();
+    setSyncState(navigator.onLine ? 'error' : 'offline');
+  }
+}
+
 async function updateWishlist(key, spotId, shouldAdd) {
   if (!db || !user || !familyId) {
     // 尚未連線時，保留整份資料待補送。
@@ -607,6 +706,8 @@ window.addEventListener('beforeunload', flushPendingSave);
 window.familyCloud = {
   queueSave,
   updateWishlist,
+  updateSpotRegion,
+  updateRegionList,
   openPanel,
   forceSync: flushPendingSave,
   getStatus: () => ({syncState,lastSyncedAt,pending:!!pendingState})

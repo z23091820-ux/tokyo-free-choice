@@ -29,6 +29,7 @@ function normalizeLegacyState(input){
     destination:x.destination||((x.area||'').includes('大阪')?'大阪':'東京')
   }));
   s.selected=Array.isArray(s.selected)?s.selected:[];
+  s.regionsByDestination=s.regionsByDestination&&typeof s.regionsByDestination==='object'&&!Array.isArray(s.regionsByDestination)?s.regionsByDestination:{};
   s.activeDestination=s.activeDestination||'東京';
   s.activeWishlistKey=s.activeWishlistKey||`destination:${s.activeDestination}`;
   s.wishlists=s.wishlists&&typeof s.wishlists==='object'&&!Array.isArray(s.wishlists)?s.wishlists:{};
@@ -268,36 +269,167 @@ function toggle(id){
   }
 }
 function mapOpen(id,nav=false){let s=spot(id);if(!s)return;let u=nav?`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.name+' 日本')}&travelmode=transit`:(s.mapUrl||`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.name+' 東京')}`);open(u,'_blank')}
-function spotCards(list){return list.map(s=>`<article class="card"><div class="row"><div class="ico">${s.icon||'📍'}</div><div class="grow"><h3>${esc(s.name)}</h3><p>${esc(s.cat||'其他')}・${s.minutes||90} 分鐘</p></div><button class="heart" onclick="toggle(${s.id})">${wishlistIds().includes(s.id)?'♥':'♡'}</button></div><div class="actions"><button onclick="mapOpen(${s.id})">查看地點</button><button class="primary" onclick="mapOpen(${s.id},true)">導航</button></div></article>`).join('')}
-function spotsPage(){
+
+
+function availableRegions(destination=state.activeDestination||'東京'){
+  state.regionsByDestination=state.regionsByDestination||{};
+  const manual=Array.isArray(state.regionsByDestination[destination])?state.regionsByDestination[destination]:[];
+  const used=state.spots
+    .filter(s=>(s.destination||'東京')===destination)
+    .map(s=>(s.area||'').trim())
+    .filter(x=>x&&x!=='未標記');
+  return [...new Set([...manual,...used])].sort((a,b)=>a.localeCompare(b,'zh-Hant'));
+}
+
+function saveRegionList(destination,regions){
+  state.regionsByDestination=state.regionsByDestination||{};
+  state.regionsByDestination[destination]=[...new Set(regions.map(x=>String(x).trim()).filter(Boolean))];
+  localStorage.setItem(KEY,JSON.stringify(state));
+  if(window.familyCloud?.updateRegionList){
+    window.familyCloud.updateRegionList(destination,state.regionsByDestination[destination]);
+  }else{
+    save();
+  }
+}
+
+function manageRegions(){
+  const destination=state.activeDestination||'東京';
+  const regions=availableRegions(destination);
+  const list=regions.length?regions.map((r,i)=>`${i+1}. ${r}`).join('\\n'):'目前尚未建立區域';
+  const action=prompt(`${destination}目前的區域：\\n${list}\\n\\n請輸入操作：\\nA 新增\\nR 重新命名\\nD 刪除`,'A');
+  if(!action)return;
+  const op=action.trim().toUpperCase();
+
+  if(op==='A'){
+    const name=prompt('請輸入新區域名稱');
+    if(!name||!name.trim())return;
+    saveRegionList(destination,[...regions,name.trim()]);
+    render(); toast('區域已新增'); return;
+  }
+
+  if(op==='R'){
+    if(!regions.length)return toast('目前沒有可重新命名的區域');
+    const no=Number(prompt(`請輸入序號：\\n${list}`));
+    const oldName=regions[no-1];
+    if(!oldName)return toast('序號不正確');
+    const newName=prompt('請輸入新的區域名稱',oldName);
+    if(!newName||!newName.trim())return;
+    const next=newName.trim();
+    state.spots.forEach(s=>{
+      if((s.destination||'東京')===destination&&s.area===oldName)s.area=next;
+    });
+    saveRegionList(destination,regions.map(x=>x===oldName?next:x));
+    save(); render(); toast('區域已重新命名'); return;
+  }
+
+  if(op==='D'){
+    if(!regions.length)return toast('目前沒有可刪除的區域');
+    const no=Number(prompt(`請輸入序號：\\n${list}`));
+    const target=regions[no-1];
+    if(!target)return toast('序號不正確');
+    if(!confirm(`確定刪除「${target}」？相關景點會改為未標記。`))return;
+    state.spots.forEach(s=>{
+      if((s.destination||'東京')===destination&&s.area===target)s.area='未標記';
+    });
+    saveRegionList(destination,regions.filter(x=>x!==target));
+    save(); render(); toast('區域已刪除'); return;
+  }
+
+  toast('請輸入 A、R 或 D');
+}
+
+function editSpotRegion(id){
+  const s=spot(id);
+  if(!s)return toast('找不到這個景點');
+  const destination=s.destination||state.activeDestination||'東京';
+  const regions=availableRegions(destination);
+  const list=regions.length?regions.map((r,i)=>`${i+1}. ${r}`).join('\\n'):'目前尚未建立區域';
+  const answer=prompt(`請設定「${s.name}」的區域：\\n${list}\\n\\n輸入序號，或直接輸入新的區域名稱。`,s.area&&s.area!=='未標記'?s.area:'');
+  if(answer===null)return;
+
+  const text=answer.trim();
+  if(!text){
+    s.area='未標記';
+  }else{
+    const idx=Number(text)-1;
+    const selected=Number.isInteger(idx)&&regions[idx]?regions[idx]:text;
+    s.area=selected;
+    if(!regions.includes(selected))saveRegionList(destination,[...regions,selected]);
+  }
+
+  localStorage.setItem(KEY,JSON.stringify(state));
+  render();
+  if(window.familyCloud?.updateSpotRegion){
+    window.familyCloud.updateSpotRegion(id,s.area);
+  }else{
+    save();
+  }
+  toast(`已標記為「${s.area}」`);
+}
+
+
+function spotCards(list){
+  return list.map(s=>`<article class="card">
+    <div class="row">
+      <div class="ico">${s.icon||'📍'}</div>
+      <div class="grow">
+        <h3>${esc(s.name)}</h3>
+        <p>${esc(s.area||'未標記')}・${esc(s.cat||'其他')}・${s.minutes||90} 分鐘</p>
+      </div>
+      <button class="heart" onclick="toggle(${s.id})">${wishlistIds().includes(s.id)?'♥':'♡'}</button>
+    </div>
+    <div class="actions">
+      <button onclick="mapOpen(${s.id})">查看地點</button>
+      <button onclick="mapOpen(${s.id},true)">導航</button>
+      <button onclick="editSpotRegion(${s.id})">標記區域</button>
+    </div>
+  </article>`).join('');
+}
+function filteredSpots(){
   const q=(state.query||'').toLowerCase();
   const destination=state.activeDestination||'東京';
-  const list=state.spots.filter(s=>
+  const region=state.filterRegion||'全部';
+  return state.spots.filter(s=>
     (s.destination||'東京')===destination &&
+    (region==='全部'||(s.area||'未標記')===region) &&
     (!q||`${s.name} ${s.note||''} ${s.cat||''} ${s.area||''}`.toLowerCase().includes(q))
   );
+}
+
+function spotsPage(){
+  const destination=state.activeDestination||'東京';
+  const list=filteredSpots();
+  const regions=['全部',...availableRegions(destination)];
+
   return `<section class="hero">
     <small>${esc(destination)}自由行</small>
     <h1>找景點、排每天行程</h1>
     <p>目前加入：<b>${esc(wishlistLabel())}</b></p>
   </section>
+
   <div class="destination-tabs">
     ${DESTINATIONS.map(d=>`<button class="${d===destination?'on':''}" onclick="setDestination('${d}')">${d}</button>`).join('')}
   </div>
+
   <div class="search">
-    <input id="q" value="${esc(state.query)}" placeholder="搜尋${esc(destination)}景點或餐廳" oninput="state.query=this.value;save();updateResults()">
+    <input id="q" value="${esc(state.query)}" placeholder="搜尋${esc(destination)}景點、餐廳或區域" oninput="state.query=this.value;save();updateResults()">
     <button onclick="state.query='';save();render()">清除</button>
   </div>
+
+  <div class="region-filter">
+    <label>依區域篩選</label>
+    <select onchange="state.filterRegion=this.value;save();render()">
+      ${regions.map(v=>`<option ${v===(state.filterRegion||'全部')?'selected':''}>${esc(v)}</option>`).join('')}
+    </select>
+    <button onclick="manageRegions()">管理區域</button>
+  </div>
+
   <div class="result"><b id="count">${list.length} 個地點</b></div>
   <div id="cards" class="grid">${spotCards(list)}</div>`;
 }
+
 function updateResults(){
-  const q=$('q').value.toLowerCase();
-  const destination=state.activeDestination||'東京';
-  const list=state.spots.filter(s=>
-    (s.destination||'東京')===destination &&
-    (!q||`${s.name} ${s.note||''} ${s.cat||''} ${s.area||''}`.toLowerCase().includes(q))
-  );
+  const list=filteredSpots();
   $('count').textContent=list.length+' 個地點';
   $('cards').innerHTML=spotCards(list);
 }
